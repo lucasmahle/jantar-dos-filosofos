@@ -1,11 +1,11 @@
-/* Dica para compilação: gcc -o run main.c -lpthread && ./run */
+/* Dica para compilação: clear && gcc -o run main.c -lpthread && ./run */
 
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
-#include <semaphore.h>
+// #include <semaphore.h>
 #include <fcntl.h>
 
 #define QUANTIDADE_FILOSOFOS 5
@@ -16,11 +16,14 @@ char nomeFilosofos[5][20] = {"Sócrates", "Platão", "Aristóteles", "Nietzsche"
 
 void *filosofoThread(void *data);
 
-pthread_mutex_t count_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutexes[QUANTIDADE_FILOSOFOS] = {
+    PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER};
 
-sem_t s;
-
-int x = 0;
+// sem_t s;
 
 int main(void)
 {
@@ -28,12 +31,13 @@ int main(void)
     pthread_t tids[QUANTIDADE_FILOSOFOS];
     int i = 0;
 
-    sem_init(&s, 0, 1); // inicializa o semáforo com valor 1
+    // sem_init(&s, 0, 1); 
 
     for (i = 0; i < QUANTIDADE_FILOSOFOS; i++)
     {
         int *j = malloc(sizeof(int));
         *j = i;
+        printf("Filósofo %s acabou de nascer.\n", nomeFilosofos[i]);
         pthread_create(&tids[i], NULL, filosofoThread, (void *)j);
     }
 
@@ -46,14 +50,30 @@ int main(void)
     return (1);
 }
 
-void pensa()
+unsigned int geraTempo()
 {
-    // printf("%d", rand() % 5000);
-    // sleep(rand() % 5000);
+    unsigned int tempoAcao = rand() % 5;
+
+    return tempoAcao;
 }
 
-void come()
+void pensa(int id)
 {
+    unsigned int tempoAcao = geraTempo();
+    printf("%s está pensando por %ds.\n", nomeFilosofos[id], tempoAcao);
+    sleep(tempoAcao);
+}
+
+void ficaComFome(int id)
+{
+    printf("%s está com fome.\n", nomeFilosofos[id]);
+}
+
+void come(int id)
+{
+    unsigned int tempoAcao = geraTempo();
+    printf("%s está comendo por %ds.\n", nomeFilosofos[id], tempoAcao);
+    sleep(tempoAcao);
 }
 
 void *filosofoThread(void *data)
@@ -61,16 +81,36 @@ void *filosofoThread(void *data)
     int id = *((int *)data);
     free((int *)data);
 
-    // demonstração tratamento exclusão mútua utilizando semáforo
     while (true)
     {
-        sem_wait(&s);
+        // sem_wait(&s);
 
-        x++;
-        pensa();
-        printf("%s tem x igual a %d.\n", nomeFilosofos[id], x);
+        pensa(id);
+        ficaComFome(id);
 
-        sem_post(&s);
+        int esquerda = id;
+        int direita = (id + 1) % QUANTIDADE_FILOSOFOS;
+
+        while (true)
+        {
+            if (pthread_mutex_trylock(&(mutexes[esquerda])) != 0)
+                continue;
+
+            if (pthread_mutex_trylock(&(mutexes[direita])) != 0)
+            {
+                pthread_mutex_unlock(&(mutexes[esquerda]));
+                continue;
+            }
+
+            printf("%s conseguiu os dois garfos.\n", nomeFilosofos[id]);
+            break;
+        }
+
+        come(id);
+
+        pthread_mutex_unlock(&(mutexes[esquerda]));
+        pthread_mutex_unlock(&(mutexes[direita]));
+        // sem_post(&s);
     }
 
     pthread_exit(NULL);
